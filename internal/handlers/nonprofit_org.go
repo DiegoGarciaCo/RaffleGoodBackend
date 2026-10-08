@@ -21,6 +21,11 @@ func (cfg *apiCfg) HandleGetMyOrg(w http.ResponseWriter, r *http.Request) {
 		cfg.handleDBError(w, err, "nonprofit")
 		return
 	}
+
+	isVerified := false
+	if v, verr := cfg.DB.GetNonprofitVerification(ctx, id); verr == nil && v.IsVerified.Valid {
+		isVerified = v.IsVerified.Bool
+	}
 	team, _ := cfg.DB.ListNonprofitTeam(ctx, id)
 	social, _ := cfg.DB.ListSocialLinks(ctx, id)
 	bank, _ := cfg.DB.GetBankAccount(ctx, id)
@@ -28,6 +33,7 @@ func (cfg *apiCfg) HandleGetMyOrg(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, http.StatusOK, map[string]any{
 		"profile":      org,
+		"is_verified":  isVerified,
 		"team":         team,
 		"social_links": social,
 		"bank_account": bank, // zero value if none connected

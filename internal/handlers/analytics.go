@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/diegoGarciaCo/raffles/internal/auth"
@@ -40,6 +43,74 @@ func trendPct(current, previous float64) float64 {
 		return 100
 	}
 	return ((current - previous) / previous) * 100
+}
+
+func safeDiv(a, b float64) float64 {
+	if b == 0 {
+		return 0
+	}
+	return a / b
+}
+
+func round2(x float64) float64 {
+	return math.Round(x*100) / 100
+}
+
+// buildInsights produces a small set of automated insights from per-strategy
+// conversion. Currently: a pricing insight when one fixed price point converts
+// meaningfully better than another (needs enough views to be trustworthy).
+func buildInsights(rows []database.GetConversionByTicketStrategyRow) []map[string]any {
+	type pricePoint struct {
+		price float64
+		conv  float64
+		views int32
+	}
+	var pts []pricePoint
+	for _, r := range rows {
+		if string(r.TicketStrategy) != "fixed" {
+			continue
+		}
+		if r.Views < 20 {
+			continue // not enough signal
+		}
+		price := 0.0
+		if r.TicketPrice.Valid {
+			price, _ = strconv.ParseFloat(r.TicketPrice.String, 64)
+		}
+		pts = append(pts, pricePoint{
+			price: price,
+			conv:  safeDiv(float64(r.TicketsSold), float64(r.Views)),
+			views: r.Views,
+		})
+	}
+	if len(pts) < 2 {
+		return []map[string]any{}
+	}
+
+	best, worst := pts[0], pts[0]
+	for _, p := range pts {
+		if p.conv > best.conv {
+			best = p
+		}
+		if p.conv < worst.conv {
+			worst = p
+		}
+	}
+	if worst.conv == 0 || best.price == worst.price {
+		return []map[string]any{}
+	}
+	ratio := best.conv / worst.conv
+	if ratio < 1.3 {
+		return []map[string]any{} // only surface a meaningful gap
+	}
+
+	msg := fmt.Sprintf(
+		"Your $%.0f raffles convert %.1fx better than your $%.0f ones. Consider lower price points to maximize participation and total raised.",
+		best.price, ratio, worst.price,
+	)
+	return []map[string]any{
+		{"type": "pricing", "message": msg},
+	}
 }
 
 // HandleAnalytics returns the analytics payload for the selected range.
@@ -100,6 +171,14 @@ func (cfg *apiCfg) HandleAnalytics(w http.ResponseWriter, r *http.Request) {
 		NonprofitID: org, WindowStart: start, WindowEnd: end,
 	})
 
+	// Average raised per unique buyer + its trend vs the previous window.
+	curAvg := safeDiv(numericToFloat(cur.TotalRaised), float64(cur.UniqueBuyers))
+	prevAvg := safeDiv(numericToFloat(prev.TotalRaised), float64(prev.UniqueBuyers))
+
+	// Automated insights (pricing, for now) — span the org's whole history.
+	stratRows, _ := cfg.DB.GetConversionByTicketStrategy(ctx, org)
+	insights := buildInsights(stratRows)
+
 	respondWithJSON(w, http.StatusOK, map[string]any{
 		"range": rangeKey,
 		"kpis": map[string]any{
@@ -110,10 +189,13 @@ func (cfg *apiCfg) HandleAnalytics(w http.ResponseWriter, r *http.Request) {
 			"unique_buyers":       cur.UniqueBuyers,
 			"new_followers":       newFollowers,
 			"followers_trend_pct": round1(trendPct(float64(newFollowers), float64(prevFollowers))),
+			"avg_per_buyer":       round2(curAvg),
+			"avg_trend_pct":       round1(trendPct(curAvg, prevAvg)),
 		},
 		"revenue_series":  series,
 		"top_raffles":     topRaffles,
 		"buyer_breakdown": breakdown,
 		"conversion":      conversion,
+		"insights":        insights,
 	})
 }

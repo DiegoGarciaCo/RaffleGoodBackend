@@ -52,11 +52,14 @@ func (cfg *apiCfg) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /nonprofits/{id}/reviews", cfg.optional(cfg.HandleNonprofitReviews))
 	mux.Handle("POST /nonprofits/{id}/follow", cfg.protected(cfg.HandleFollowOrg))
 	mux.Handle("DELETE /nonprofits/{id}/follow", cfg.protected(cfg.HandleUnfollowOrg))
+	mux.Handle("GET /nonprofits", cfg.optional(cfg.HandleListNonprofits))
+	mux.Handle("GET /nonprofits/{id}/raffles", cfg.optional(cfg.HandleListNonprofitRaffles))
 
 	// ── Nonprofit org (settings, owned data) ──────────────────────────────────
 	mux.Handle("GET /nonprofits/me", cfg.orgOnly(cfg.HandleGetMyOrg))
 	mux.Handle("PATCH /nonprofits/me", cfg.orgOnly(cfg.HandleUpdateOrgProfile))
 	mux.Handle("PATCH /nonprofits/me/contact", cfg.orgOnly(cfg.HandleUpdateOrgContact))
+	mux.Handle("POST /nonprofits/me/verify", cfg.orgOnly(cfg.HandleVerifyNonprofit))
 	mux.Handle("GET /nonprofits/me/team", cfg.orgOnly(cfg.HandleListTeam))
 	mux.Handle("GET /nonprofits/me/payouts", cfg.orgOnly(cfg.HandleListPayouts))
 	mux.Handle("PATCH /nonprofits/me/notification-preferences", cfg.orgOnly(cfg.HandleUpdateOrgNotifPrefs))
@@ -81,7 +84,7 @@ func (cfg *apiCfg) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /events/share", cfg.optional(cfg.HandleRecordShare))
 
 	// ── Uploads ───────────────────────────────────────────────────────────────
-	// mux.HandleFunc("POST /uploads/presign", cfg.HandlePresignUpload) // S3 presigned URL for raffle/org images
+	mux.Handle("POST /uploads/presign", cfg.protected(cfg.HandlePresignUpload))
 
 	// ── Webhooks (signature-auth, bypass session middleware) ──────────────────
 	mux.HandleFunc("POST /webhooks/stripe", cfg.HandleStripeWebhook)

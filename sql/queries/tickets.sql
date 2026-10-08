@@ -158,7 +158,7 @@ WHERE
 
 -- ── User's tickets (My Tickets screen) ────────────────────────────────────────
 -- name: ListUserTicketsGrouped :many
--- One row per (raffle) the user has tickets in, with their numbers aggregated.
+-- One row per raffle the user has tickets in, with their numbers aggregated.
 SELECT
     ri.id AS raffle_item_id,
     ri.title,
@@ -170,9 +170,10 @@ SELECT
         t.ticket_number
         ORDER BY
             t.ticket_number
-    ) AS ticket_numbers,
+    )::INT[] AS ticket_numbers,
     COUNT(t.id)::INT AS ticket_count,
-    SUM(t.price_paid)::NUMERIC AS total_spent
+    SUM(t.price_paid)::NUMERIC AS total_spent,
+    MAX(t.purchased_at)::TIMESTAMPTZ AS purchased_at
 FROM
     tickets t
     JOIN raffle_items ri ON ri.id = t.raffle_item_id

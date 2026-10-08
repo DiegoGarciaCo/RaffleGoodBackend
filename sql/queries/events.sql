@@ -1,21 +1,11 @@
 -- ── Raffle views ──────────────────────────────────────────────────────────────
 -- name: RecordRaffleView :exec
-INSERT INTO
-    raffle_views (
-        raffle_item_id,
-        user_id,
-        session_id,
-        source,
-        referrer
-    )
-VALUES
-    (
-        sqlc.arg(raffle_item_id),
-        sqlc.narg(user_id),
-        sqlc.narg(session_id),
-        sqlc.narg(source),
-        sqlc.narg(referrer)
-    );
+-- Records one raffle view for conversion analytics. Called (fire-and-forget)
+-- from the public GET /raffles/{id} handler. Anonymous views are fine.
+-- NOTE: if raffle_views has a nullable user_id column you want to populate,
+-- add `, user_id` here and `, sqlc.narg(user_id)` to VALUES.
+INSERT INTO raffle_views (raffle_item_id)
+VALUES (sqlc.arg(raffle_item_id)::uuid);
 
 -- name: CountRaffleViews :one
 SELECT

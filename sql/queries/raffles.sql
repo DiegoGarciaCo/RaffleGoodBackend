@@ -31,14 +31,18 @@ WHERE
     ri.slug = sqlc.arg(slug)::text;
 
 -- ── Browse / feed (participant) ──────────────────────────────────────────────
+-- sort: 'ending_soon' (default) | 'newest' | 'most_funded' | 'price_asc' | 'price_desc'
 -- name: ListActiveRaffles :many
--- General feed, newest first.
 SELECT
     *
 FROM
     v_active_raffles
 ORDER BY
-    draw_at NULLS LAST
+    CASE WHEN sqlc.arg(sort)::text = 'most_funded' THEN tickets_sold END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'price_asc'   THEN ticket_price END ASC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'price_desc'  THEN ticket_price END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'newest'      THEN created_at   END DESC NULLS LAST,
+    draw_at ASC NULLS LAST   -- default = ending soon
 LIMIT
     sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
 
@@ -67,7 +71,6 @@ LIMIT
     sqlc.arg(result_limit);
 
 -- name: ListRafflesByCategory :many
--- Browse a category subtree (path LIKE 'electronics%').
 SELECT
     *
 FROM
@@ -75,7 +78,11 @@ FROM
 WHERE
     category_path LIKE sqlc.arg(category_path_prefix)::text || '%'
 ORDER BY
-    tickets_sold DESC
+    CASE WHEN sqlc.arg(sort)::text = 'most_funded' THEN tickets_sold END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'price_asc'   THEN ticket_price END ASC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'price_desc'  THEN ticket_price END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort)::text = 'newest'      THEN created_at   END DESC NULLS LAST,
+    tickets_sold DESC   -- default within a category = most funded
 LIMIT
     sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
 
@@ -117,10 +124,23 @@ LIMIT
 SELECT
     ri.*,
     c.name AS category_name,
-    c.icon AS category_icon
+    c.icon AS category_icon,
+    COALESCE(dr.winner_count, 0)::INT AS winner_count,
+    COALESCE(
+        (
+            SELECT
+                bool_and(dw.prize_claimed)
+            FROM
+                draw_winners dw
+            WHERE
+                dw.draw_result_id = dr.id
+        ),
+        FALSE
+    ) AS prize_claimed
 FROM
     raffle_items ri
     JOIN categories c ON c.id = ri.category_id
+    LEFT JOIN draw_results dr ON dr.raffle_item_id = ri.id
 WHERE
     ri.created_by = sqlc.arg(nonprofit_id)
 ORDER BY
@@ -132,10 +152,23 @@ LIMIT
 SELECT
     ri.*,
     c.name AS category_name,
-    c.icon AS category_icon
+    c.icon AS category_icon,
+    COALESCE(dr.winner_count, 0)::INT AS winner_count,
+    COALESCE(
+        (
+            SELECT
+                bool_and(dw.prize_claimed)
+            FROM
+                draw_winners dw
+            WHERE
+                dw.draw_result_id = dr.id
+        ),
+        FALSE
+    ) AS prize_claimed
 FROM
     raffle_items ri
     JOIN categories c ON c.id = ri.category_id
+    LEFT JOIN draw_results dr ON dr.raffle_item_id = ri.id
 WHERE
     ri.created_by = sqlc.arg(nonprofit_id)
     AND ri.status = sqlc.arg(STATUS)
@@ -301,3 +334,4 @@ WHERE
     STATUS = 'active'
     AND draw_at IS NOT NULL
     AND draw_at <= NOW();
+

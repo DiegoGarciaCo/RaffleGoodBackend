@@ -73,10 +73,32 @@ SELECT
 -- name: ListFollowedOrgs :many
 SELECT
     n.*,
-    of.created_at AS followed_at
+    of.created_at AS followed_at,
+    COALESCE(v."isVerified", FALSE)::bool AS is_verified,
+    (
+        SELECT
+            COUNT(*)
+        FROM
+            raffle_items ri
+        WHERE
+            ri.created_by = n.id
+            AND ri.status = 'active'::raffle_item_status
+    )::INT AS active_raffles
 FROM
     org_follows of
     JOIN nonprofits n ON n.id = of.nonprofit_id
+    LEFT JOIN LATERAL (
+        SELECT
+            nv."isVerified"
+        FROM
+            nonprofit_verifications nv
+        WHERE
+            nv.nonprofit_id = n.id
+        ORDER BY
+            nv.created_at DESC
+        LIMIT
+            1
+    ) v ON TRUE
 WHERE
     of.user_id = $1
 ORDER BY

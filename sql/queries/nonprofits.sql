@@ -233,6 +233,8 @@ WHERE
 -- ── Dashboard / Org all-time stats ────────────────────────────────────────────
 -- name: GetNonprofitAllTimeStats :one
 SELECT
+    n.id AS org_id,
+    n.name AS org_name,
     n.total_raised_cents,
     n.raffles_run,
     n.follower_count,
@@ -254,7 +256,7 @@ WHERE
     n.id = $1;
 
 -- name: GetNonprofitMonthStats :one
--- Raised + tickets in a date window (pass start-of-month / now).
+-- Raised + tickets in a [window_start, window_end) range.
 SELECT
     COALESCE(SUM(t.price_paid), 0)::NUMERIC AS raised,
     COUNT(*)::INT AS tickets_sold
@@ -263,7 +265,8 @@ FROM
     JOIN raffle_items ri ON ri.id = t.raffle_item_id
 WHERE
     ri.created_by = sqlc.arg(nonprofit_id)
-    AND t.purchased_at >= sqlc.arg(window_start);
+    AND t.purchased_at >= sqlc.arg(window_start)
+    AND t.purchased_at < sqlc.arg(window_end);
 
 -- name: GetTicketsSoldSince :one
 -- For "tickets today" / "tickets in last hour" dashboard metrics.

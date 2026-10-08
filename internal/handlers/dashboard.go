@@ -20,6 +20,7 @@ func (cfg *apiCfg) HandleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	prevMonthStart := monthStart.AddDate(0, -1, 0)
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	hourAgo := now.Add(-time.Hour)
 
@@ -29,14 +30,22 @@ func (cfg *apiCfg) HandleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Current month [monthStart, now) and previous month [prevMonthStart, monthStart)
+	// for the trend.
 	month, err := cfg.DB.GetNonprofitMonthStats(ctx, database.GetNonprofitMonthStatsParams{
 		NonprofitID: orgID,
 		WindowStart: monthStart,
+		WindowEnd:   now,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "could not load month stats")
 		return
 	}
+	prevMonth, _ := cfg.DB.GetNonprofitMonthStats(ctx, database.GetNonprofitMonthStatsParams{
+		NonprofitID: orgID,
+		WindowStart: prevMonthStart,
+		WindowEnd:   monthStart,
+	})
 
 	ticketsToday, _ := cfg.DB.GetTicketsSoldSince(ctx, database.GetTicketsSoldSinceParams{
 		NonprofitID: orgID,
@@ -68,8 +77,11 @@ func (cfg *apiCfg) HandleDashboard(w http.ResponseWriter, r *http.Request) {
 	unclaimed, _ := cfg.DB.ListUnclaimedPrizesForNonprofit(ctx, orgID)
 
 	respondWithJSON(w, http.StatusOK, map[string]any{
+		"org_id":   allTime.OrgID,
+		"org_name": allTime.OrgName,
 		"this_month": map[string]any{
 			"raised":            month.Raised,
+			"raised_trend_pct":  round1(trendPct(numericToFloat(month.Raised), numericToFloat(prevMonth.Raised))),
 			"tickets_sold":      month.TicketsSold,
 			"tickets_today":     ticketsToday,
 			"tickets_last_hour": ticketsLastHour,

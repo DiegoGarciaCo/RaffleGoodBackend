@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
+	"github.com/diegoGarciaCo/raffles/internal/auth"
 	"github.com/diegoGarciaCo/raffles/internal/database"
 	"github.com/google/uuid"
 )
@@ -10,13 +12,16 @@ import (
 // HandleListRaffles is the main browse feed. Supports ?category=<path-prefix>
 // to scope to a category subtree; otherwise returns all active raffles.
 //
-//	GET /raffles?limit=&offset=&category=
+//	GET /raffles?limit=&offset=&category=&sort=
+//	sort: ending_soon (default) | newest | most_funded | price_asc | price_desc
 func (cfg *apiCfg) HandleListRaffles(w http.ResponseWriter, r *http.Request) {
 	limit, offset := paginationParams(r, defaultPageLimit)
+	sort := r.URL.Query().Get("sort")
 
 	if cat := r.URL.Query().Get("category"); cat != "" {
 		rows, err := cfg.DB.ListRafflesByCategory(r.Context(), database.ListRafflesByCategoryParams{
 			CategoryPathPrefix: cat,
+			Sort:               sort,
 			ResultLimit:        limit,
 			ResultOffset:       offset,
 		})
@@ -29,6 +34,7 @@ func (cfg *apiCfg) HandleListRaffles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := cfg.DB.ListActiveRaffles(r.Context(), database.ListActiveRafflesParams{
+		Sort:         sort,
 		ResultLimit:  limit,
 		ResultOffset: offset,
 	})
@@ -96,11 +102,13 @@ func (cfg *apiCfg) HandleSearchRaffles(w http.ResponseWriter, r *http.Request) {
 type raffleDetailResponse struct {
 	Raffle     any                  `json:"raffle"`
 	PrizeTiers []database.PrizeTier `json:"prize_tiers"`
+	IsSaved    bool                 `json:"is_saved"`
 }
 
-// HandleGetRaffle returns one raffle (by UUID or slug) plus its prize tiers.
+// HandleGetRaffle returns one raffle (by UUID or slug), its prize tiers, and
+// whether the (optional) logged-in viewer has saved it.
 //
-//	GET /raffles/{idOrSlug}
+//	GET /raffles/{idOrSlug}   (optional auth)
 func (cfg *apiCfg) HandleGetRaffle(w http.ResponseWriter, r *http.Request) {
 	idOrSlug := r.PathValue("idOrSlug")
 
@@ -132,6 +140,27 @@ func (cfg *apiCfg) HandleGetRaffle(w http.ResponseWriter, r *http.Request) {
 		tiers = []database.PrizeTier{}
 	}
 
-	// TODO: record a raffle_view (fire-and-forget), using the optional user.
-	respondWithJSON(w, http.StatusOK, raffleDetailResponse{Raffle: raffle, PrizeTiers: tiers})
+	// Saved state for the logged-in viewer (guests → false).
+	isSaved := false
+	if u, ok := auth.UserFromContext(r.Context()); ok {
+		isSaved, _ = cfg.DB.IsRaffleSaved(r.Context(), database.IsRaffleSavedParams{
+			UserID:       u.ID,
+			RaffleItemID: raffleID,
+		})
+	}
+
+	u, ok := auth.UserFromContext(r.Context())
+	log.Printf("[getRaffle] userOk=%v isSaved=%v", ok, isSaved)
+	if ok {
+		isSaved, _ = cfg.DB.IsRaffleSaved(r.Context(), database.IsRaffleSavedParams{
+			UserID: u.ID, RaffleItemID: raffleID,
+		})
+	}
+
+	_ = cfg.DB.RecordRaffleView(r.Context(), raffleID) // fire-and-forget view tracking
+	respondWithJSON(w, http.StatusOK, raffleDetailResponse{
+		Raffle:     raffle,
+		PrizeTiers: tiers,
+		IsSaved:    isSaved,
+	})
 }

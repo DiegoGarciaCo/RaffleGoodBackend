@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE "accounts" (
-    "id" UUID NOT NULL PRIMARY KEY,
+    "id" UUID NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
     "accountId" TEXT NOT NULL,
     "providerId" TEXT NOT NULL,
     "userId" UUID NOT NULL REFERENCES "users" ("id") ON DELETE CASCADE,

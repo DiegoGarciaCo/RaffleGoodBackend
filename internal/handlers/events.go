@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 
 	"github.com/diegoGarciaCo/raffles/internal/auth"
@@ -36,13 +35,7 @@ func (cfg *apiCfg) HandleRecordView(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "invalid raffle_id")
 		return
 	}
-	_ = cfg.DB.RecordRaffleView(r.Context(), database.RecordRaffleViewParams{
-		RaffleItemID: raffleID,
-		UserID:       optionalUserID(r),
-		SessionID:    sql.NullString{},
-		Source:       nullStr(req.Source),
-		Referrer:     nullStr(req.Referrer),
-	})
+	_ = cfg.DB.RecordRaffleView(r.Context(), raffleID)
 	respondWithJSON(w, http.StatusNoContent, nil)
 }
 

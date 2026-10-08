@@ -43,18 +43,20 @@ func (cfg *apiCfg) HandleGetDraw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]any{
-		"raffle_item_id":   result.RaffleItemID,
-		"status":           result.Status,
-		"draw_strategy":    result.DrawStrategy,
-		"reveal_order":     result.RevealOrder,
-		"winner_count":     result.WinnerCount,
-		"draw_started_at":  result.DrawStartedAt,
-		"draw_duration_ms": result.DrawDurationMs,
-		"commitment_hash":  result.CommitmentHash,
-		"seed":             seed, // empty until completed
-		"watchers_now":     cfg.watcherCount(raffleID),
-		"current_user_id":  currentUserID,
-		"winners":          winners,
+		"raffle_item_id":     result.RaffleItemID,
+		"status":             result.Status,
+		"draw_strategy":      result.DrawStrategy,
+		"reveal_order":       result.RevealOrder,
+		"winner_count":       result.WinnerCount,
+		"draw_started_at":    result.DrawStartedAt,
+		"draw_duration_ms":   result.DrawDurationMs,
+		"commitment_hash":    result.CommitmentHash,
+		"seed":               seed, // empty until completed
+		"total_tickets":      result.TotalTickets,
+		"total_participants": result.TotalParticipants,
+		"watchers_now":       cfg.watcherCount(raffleID),
+		"current_user_id":    currentUserID,
+		"winners":            winners,
 	})
 }
 

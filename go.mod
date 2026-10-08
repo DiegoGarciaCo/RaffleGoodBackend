@@ -28,5 +28,6 @@ require (
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sqlc-dev/pqtype v0.3.0 // indirect
+	github.com/stripe/stripe-go/v79 v79.12.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 )

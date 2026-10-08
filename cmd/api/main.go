@@ -13,9 +13,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/diegoGarciaCo/raffles/internal/charity"
 	"github.com/diegoGarciaCo/raffles/internal/database"
 	"github.com/diegoGarciaCo/raffles/internal/draw"
 	"github.com/diegoGarciaCo/raffles/internal/handlers"
+	"github.com/diegoGarciaCo/raffles/internal/payments"
 	"github.com/diegoGarciaCo/raffles/internal/realtime"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -24,8 +26,6 @@ import (
 
 func main() {
 	// ── Env ──────────────────────────────────────────────────────────────────
-	// Run from the project root so .env is found. If you run the binary from
-	// elsewhere, set the env vars in the environment instead.
 	if err := godotenv.Load(); err != nil {
 		logrus.Warn("no .env file found, relying on environment variables")
 	}
@@ -64,6 +64,13 @@ func main() {
 		s3Client, cfg.s3Bucket, cfg.s3Region, cfg.betterAuthSecret,
 	)
 
+	// ── Stripe ───────────────────────────────────────────────────────────────
+	api.Payments = payments.NewClient(cfg.stripeSecret, cfg.stripeWebhookSecret)
+	api.StripePublishableKey = cfg.stripePublishable
+
+	// ── CharityAPI (IRS EIN verification) ──────────────────────────────────────
+	api.Charity = charity.New(cfg.charityAPIKey)
+
 	// ── Routes + middleware ────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
@@ -85,7 +92,6 @@ func main() {
 	}
 
 	// ── Realtime hub + draw worker ─────────────────────────────────────────────
-	// Root context cancelled on shutdown so the worker exits cleanly.
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	defer rootCancel()
 
@@ -103,13 +109,11 @@ func main() {
 		}
 	}()
 
-	// Block until SIGINT/SIGTERM.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 	logrus.Info("shutting down...")
 
-	// Give in-flight requests up to 15s to finish.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -121,24 +125,32 @@ func main() {
 // ── Env loading ──────────────────────────────────────────────────────────────
 
 type envConfig struct {
-	port             string
-	jwtSecret        string
-	betterAuthSecret string
-	s3Bucket         string
-	s3Region         string
-	dbURL            string
-	dev              bool
+	port                string
+	jwtSecret           string
+	betterAuthSecret    string
+	s3Bucket            string
+	s3Region            string
+	dbURL               string
+	dev                 bool
+	stripeSecret        string
+	stripeWebhookSecret string
+	stripePublishable   string
+	charityAPIKey       string
 }
 
 func mustLoadEnv() envConfig {
 	return envConfig{
-		port:             mustEnv("PORT"),
-		jwtSecret:        mustEnv("JWT_SECRET"),
-		betterAuthSecret: mustEnv("BETTER_AUTH_SECRET"),
-		s3Bucket:         mustEnv("S3_BUCKET"),
-		s3Region:         mustEnv("S3_REGION"),
-		dbURL:            mustEnv("DATABASE_URL"),
-		dev:              os.Getenv("DEV") == "true",
+		port:                mustEnv("PORT"),
+		jwtSecret:           mustEnv("JWT_SECRET"),
+		betterAuthSecret:    mustEnv("BETTER_AUTH_SECRET"),
+		s3Bucket:            mustEnv("S3_BUCKET"),
+		s3Region:            mustEnv("S3_REGION"),
+		dbURL:               mustEnv("DATABASE_URL"),
+		dev:                 os.Getenv("DEV") == "true",
+		stripeSecret:        mustEnv("STRIPE_SECRET_KEY"),
+		stripeWebhookSecret: mustEnv("STRIPE_WEBHOOK_SECRET"),
+		stripePublishable:   mustEnv("STRIPE_PUBLISHABLE_KEY"),
+		charityAPIKey:       mustEnv("CHARITY_API_KEY"),
 	}
 }
 

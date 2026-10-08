@@ -31,7 +31,12 @@ func (cfg *apiCfg) HandleGetNonprofit(w http.ResponseWriter, r *http.Request) {
 	social, _ := cfg.DB.ListSocialLinks(ctx, org.ID)
 	reviews, _ := cfg.DB.GetOrgReviewSummary(ctx, org.ID)
 
-	// Is the requesting user following?
+	// Latest verification row decides verified status (missing row → false).
+	isVerified := false
+	if v, verr := cfg.DB.GetNonprofitVerification(ctx, org.ID); verr == nil && v.IsVerified.Valid {
+		isVerified = v.IsVerified.Bool
+	}
+
 	following := false
 	if u, ok := auth.UserFromContext(ctx); ok {
 		following, _ = cfg.DB.IsFollowingOrg(ctx, database.IsFollowingOrgParams{
@@ -43,6 +48,7 @@ func (cfg *apiCfg) HandleGetNonprofit(w http.ResponseWriter, r *http.Request) {
 		"profile":        org,
 		"social_links":   social,
 		"review_summary": reviews,
+		"is_verified":    isVerified,
 		"is_following":   following,
 	})
 }
@@ -106,4 +112,44 @@ func (cfg *apiCfg) HandleNonprofitReviews(w http.ResponseWriter, r *http.Request
 		return
 	}
 	respondWithJSON(w, http.StatusOK, reviews)
+}
+
+// HandleListNonprofitRaffles returns a nonprofit's public raffles for the org
+// profile screen. The client splits the result into active/past sections, so
+// this only ever exposes 'active' and 'completed' raffles (never drafts or
+// cancelled ones).
+//
+//	GET /nonprofits/{id}/raffles?status=active|past|all   (optional auth)
+func (cfg *apiCfg) HandleListNonprofitRaffles(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid nonprofit id")
+		return
+	}
+
+	status := r.URL.Query().Get("status")
+	switch status {
+	case "active", "past", "all":
+		// valid
+	default:
+		status = "all"
+	}
+
+	limit, offset := paginationParams(r, defaultPageLimit)
+
+	rows, err := cfg.DB.ListNonprofitRaffles(r.Context(), database.ListNonprofitRafflesParams{
+		NonprofitID:  orgID,
+		StatusFilter: status,
+		ResultLimit:  limit,
+		ResultOffset: offset,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not load raffles")
+		return
+	}
+	if rows == nil {
+		rows = []database.ListNonprofitRafflesRow{} // marshal [] not null for empty results
+	}
+
+	respondWithJSON(w, http.StatusOK, rows)
 }
